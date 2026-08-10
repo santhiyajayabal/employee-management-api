@@ -43,6 +43,18 @@ public class EmployeeController {
         return ResponseEntity.ok(employee);
     }
 
+    @GetMapping("/filter")
+    public ResponseEntity<Page<EmployeeResponseDTO>> filter(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String department,
+            @RequestParam(required = false) Double minSalary,
+            @RequestParam(required = false) Double maxSalary,
+            Pageable pageable) {
+
+        Page<EmployeeResponseDTO> employees = employeeService.searchEmployees(name, department, minSalary, maxSalary, pageable);
+        return ResponseEntity.ok(employees);
+    }
+
     @GetMapping("/department/{dept}")
     public ResponseEntity<List<EmployeeResponseDTO>> getByDept(@PathVariable String dept){
         List<EmployeeResponseDTO> employees = employeeService.getEmployeeByDept(dept);
