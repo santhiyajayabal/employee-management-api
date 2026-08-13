@@ -33,7 +33,7 @@ public class EmployeeService {
                 .map(EmployeeMapper::toResponseDTO);
     }
 
-    public void createEmployeeList(EmployeeRequestDTO employee){
+    public void createEmployee(EmployeeRequestDTO employee){
         employeeRepository.save(EmployeeMapper.toEntity(employee));
     }
 
