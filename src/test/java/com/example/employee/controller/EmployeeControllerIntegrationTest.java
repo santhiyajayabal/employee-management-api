@@ -1,38 +1,46 @@
 package com.example.employee.controller;
 
 import com.example.employee.dto.EmployeeRequestDTO;
-import com.example.employee.dto.EmployeeResponseDTO;
 import com.example.employee.repository.EmployeeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.*;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.ObjectMapper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.time.LocalDate;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
+@SpringBootTest
+@AutoConfigureMockMvc
 class EmployeeControllerIntegrationTest {
 
     @Autowired
-    private EmployeeRepository employeeRepository;
+    private MockMvc mockMvc;
 
-    private final RestTemplate rest = new RestTemplate();
-    private final String baseUrl = "http://localhost:8080/api/employees";
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private EmployeeRepository employeeRepository;
 
     @BeforeEach
     void cleanup() {
         employeeRepository.deleteAll();
     }
 
+    // ---------- CREATE ----------
+
     @Test
-    void createEmployee_withValidData_returns201_andPersists() {
+    void createEmployee_withValidData_returns201() throws Exception {
         EmployeeRequestDTO dto = new EmployeeRequestDTO();
         dto.setName("Grace Hopper");
         dto.setEmail("grace@example.com");
@@ -40,77 +48,53 @@ class EmployeeControllerIntegrationTest {
         dto.setSalary(90000);
         dto.setDateOfJoining(LocalDate.of(2022, 4, 10));
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<EmployeeRequestDTO> request = new HttpEntity<>(dto, headers);
+        mockMvc.perform(post("/api/employees")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isCreated())
+                .andExpect(content().string("Employee created"));
 
-        ResponseEntity<String> response = rest.postForEntity(baseUrl, request, String.class);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isEqualTo("Employee created");
-
-        // persisted in repository
-        List<?> all = employeeRepository.findAll();
-        assertThat(all).hasSize(1);
+        assertEquals(1, employeeRepository.findAll().size());
     }
 
     @Test
-    void createEmployee_withMissingName_returns400() {
+    void createEmployee_withMissingName_returns400() throws Exception {
         EmployeeRequestDTO dto = new EmployeeRequestDTO();
-        dto.setName("");  // invalid — @NotBlank
+        dto.setName("");
         dto.setEmail("invalid@example.com");
         dto.setDepartment("Engineering");
         dto.setSalary(50000);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<EmployeeRequestDTO> request = new HttpEntity<>(dto, headers);
+        mockMvc.perform(post("/api/employees")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+    }
 
-        org.junit.jupiter.api.Assertions.assertThrows(org.springframework.web.client.HttpClientErrorException.class,
-                () -> rest.postForEntity(baseUrl, request, String.class));
+    // ---------- GET BY ID ----------
+
+    @Test
+    void getEmployeeById_found_returns200() throws Exception {
+        Long id = createEmployeeAndGetId("Ada Lovelace", "ada@example.com", "R&D", 120000);
+
+        mockMvc.perform(get("/api/employees/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("ada@example.com"))
+                .andExpect(jsonPath("$.name").value("Ada Lovelace"));
     }
 
     @Test
-    void getById_returnsEmployee() {
-        // create employee
-        EmployeeRequestDTO dto = new EmployeeRequestDTO();
-        dto.setName("Ada Lovelace");
-        dto.setEmail("ada@example.com");
-        dto.setDepartment("R&D");
-        dto.setSalary(120000);
-        dto.setDateOfJoining(LocalDate.of(2020, 1, 1));
-
-        rest.postForEntity(baseUrl, new HttpEntity<>(dto, jsonHeaders()), String.class);
-
-        // find id from repository
-        Optional<Long> maybeId = employeeRepository.findAll().stream()
-                .filter(e -> "ada@example.com".equals(e.getEmail()))
-                .map(e -> e.getId())
-                .findFirst();
-        assertThat(maybeId).isPresent();
-        Long id = maybeId.get();
-
-        ResponseEntity<EmployeeResponseDTO> response = rest.getForEntity(baseUrl + "/" + id, EmployeeResponseDTO.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        EmployeeResponseDTO body = response.getBody();
-        assertThat(body).isNotNull();
-        assertThat(body.getEmail()).isEqualTo("ada@example.com");
-        assertThat(body.getName()).isEqualTo("Ada Lovelace");
+    void getEmployeeById_notFound_returns404() throws Exception {
+        mockMvc.perform(get("/api/employees/999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value("ERROR"));
     }
 
-    @Test
-    void updateEmployee_returns200_andPersistsChanges() {
-        // create employee
-        EmployeeRequestDTO dto = new EmployeeRequestDTO();
-        dto.setName("Alan Turing");
-        dto.setEmail("alan@example.com");
-        dto.setDepartment("Research");
-        dto.setSalary(110000);
-        dto.setDateOfJoining(LocalDate.of(2019, 6, 15));
-        rest.postForEntity(baseUrl, new HttpEntity<>(dto, jsonHeaders()), String.class);
+    // ---------- UPDATE ----------
 
-        Long id = employeeRepository.findAll().stream()
-                .filter(e -> "alan@example.com".equals(e.getEmail())).findFirst().map(e -> e.getId()).get();
+    @Test
+    void updateEmployee_returns200_andPersistsChanges() throws Exception {
+        Long id = createEmployeeAndGetId("Alan Turing", "alan@example.com", "Research", 110000);
 
         EmployeeRequestDTO update = new EmployeeRequestDTO();
         update.setName("Alan M. Turing");
@@ -119,72 +103,72 @@ class EmployeeControllerIntegrationTest {
         update.setSalary(115000);
         update.setDateOfJoining(LocalDate.of(2019, 6, 15));
 
-        ResponseEntity<String> resp = rest.exchange(baseUrl + "/" + id,
-                HttpMethod.PUT, new HttpEntity<>(update, jsonHeaders()), String.class);
+        mockMvc.perform(put("/api/employees/" + id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(update)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Employee Updated"));
 
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(resp.getBody()).isEqualTo("Employee Updated");
-
-        // verify persisted
-        assertThat(employeeRepository.findById(id)).isPresent();
-        assertThat(employeeRepository.findById(id).get().getName()).isEqualTo("Alan M. Turing");
+        assertEquals("Alan M. Turing", employeeRepository.findById(id).get().getName());
     }
 
+    // ---------- DELETE ----------
+
     @Test
-    void deleteEmployee_returns204_andRemoves() {
+    void deleteEmployee_returns204_andRemoves() throws Exception {
+        Long id = createEmployeeAndGetId("To Be Deleted", "tbd@example.com", "Temp", 30000);
+
+        mockMvc.perform(delete("/api/employees/" + id))
+                .andExpect(status().isNoContent());
+
+        assertFalse(employeeRepository.existsById(id));
+    }
+
+    // ---------- DEPARTMENT ----------
+
+    @Test
+    void getByDept_returnsEmployeesInDepartment() throws Exception {
+        createEmployeeAndGetId("E1", "e1@example.com", "Sales", 40000);
+        createEmployeeAndGetId("E2", "e2@example.com", "Sales", 42000);
+        createEmployeeAndGetId("E3", "e3@example.com", "HR", 38000);
+
+        mockMvc.perform(get("/api/employees/department/Sales"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].department").value("Sales"))
+                .andExpect(jsonPath("$[1].department").value("Sales"));
+    }
+
+    // ---------- SEARCH ----------
+
+    @Test
+    void searchByName_containsMatchingEmployees() throws Exception {
+        createEmployeeAndGetId("Ada Lovelace", "ada2@example.com", "R&D", 100000);
+        createEmployeeAndGetId("Adrian Smith", "adrian@example.com", "R&D", 90000);
+
+        mockMvc.perform(get("/api/employees/search").param("name", "Ada"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Ada Lovelace")));
+    }
+
+    // ---------- Helper ----------
+
+    private Long createEmployeeAndGetId(String name, String email, String dept, double salary) throws Exception {
         EmployeeRequestDTO dto = new EmployeeRequestDTO();
-        dto.setName("To Be Deleted");
-        dto.setEmail("tbd@example.com");
-        dto.setDepartment("Temp");
-        dto.setSalary(30000);
-        rest.postForEntity(baseUrl, new HttpEntity<>(dto, jsonHeaders()), String.class);
+        dto.setName(name);
+        dto.setEmail(email);
+        dto.setDepartment(dept);
+        dto.setSalary(salary);
+        dto.setDateOfJoining(LocalDate.of(2021, 1, 1));
 
-        Long id = employeeRepository.findAll().stream()
-                .filter(e -> "tbd@example.com".equals(e.getEmail())).findFirst().map(e -> e.getId()).get();
+        mockMvc.perform(post("/api/employees")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)));
 
-        ResponseEntity<Void> resp = rest.exchange(baseUrl + "/" + id, HttpMethod.DELETE, null, Void.class);
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        assertThat(employeeRepository.existsById(id)).isFalse();
-    }
-
-    @Test
-    void getByDept_returnsEmployeesInDepartment() {
-        EmployeeRequestDTO a = new EmployeeRequestDTO();
-        a.setName("E1"); a.setEmail("e1@example.com"); a.setDepartment("Sales"); a.setSalary(40000);
-        EmployeeRequestDTO b = new EmployeeRequestDTO();
-        b.setName("E2"); b.setEmail("e2@example.com"); b.setDepartment("Sales"); b.setSalary(42000);
-        EmployeeRequestDTO c = new EmployeeRequestDTO();
-        c.setName("E3"); c.setEmail("e3@example.com"); c.setDepartment("HR"); c.setSalary(38000);
-        rest.postForEntity(baseUrl, new HttpEntity<>(a, jsonHeaders()), String.class);
-        rest.postForEntity(baseUrl, new HttpEntity<>(b, jsonHeaders()), String.class);
-        rest.postForEntity(baseUrl, new HttpEntity<>(c, jsonHeaders()), String.class);
-
-        ResponseEntity<EmployeeResponseDTO[]> resp = rest.getForEntity(baseUrl + "/department/Sales", EmployeeResponseDTO[].class);
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        EmployeeResponseDTO[] arr = resp.getBody();
-        assertThat(arr).isNotNull();
-        List<EmployeeResponseDTO> list = Arrays.asList(arr);
-        assertThat(list).hasSize(2);
-        assertThat(list).allSatisfy(e -> assertThat(e.getDepartment()).isEqualTo("Sales"));
-    }
-
-    @Test
-    void searchByName_containsMatchingEmployees() {
-        EmployeeRequestDTO a = new EmployeeRequestDTO();
-        a.setName("Ada Lovelace"); a.setEmail("ada2@example.com"); a.setDepartment("R&D"); a.setSalary(100000);
-        EmployeeRequestDTO b = new EmployeeRequestDTO();
-        b.setName("Adrian Smith"); b.setEmail("adrian@example.com"); b.setDepartment("R&D"); b.setSalary(90000);
-        rest.postForEntity(baseUrl, new HttpEntity<>(a, jsonHeaders()), String.class);
-        rest.postForEntity(baseUrl, new HttpEntity<>(b, jsonHeaders()), String.class);
-
-        ResponseEntity<String> resp = rest.getForEntity(baseUrl + "/search?name=Ada", String.class);
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(resp.getBody()).contains("Ada Lovelace");
-    }
-
-    private HttpHeaders jsonHeaders() {
-        HttpHeaders h = new HttpHeaders();
-        h.setContentType(MediaType.APPLICATION_JSON);
-        return h;
+        return employeeRepository.findAll().stream()
+                .filter(e -> email.equals(e.getEmail()))
+                .findFirst()
+                .map(e -> e.getId())
+                .orElseThrow();
     }
 }

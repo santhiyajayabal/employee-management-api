@@ -18,5 +18,6 @@ public class EmployeeRequestDTO {
     private String department;
     @Positive(message = "Value should be positive value")
     private double salary;
+    @PastOrPresent(message = "Date of joining should be in the past or present")
     private LocalDate dateOfJoining;
 }
