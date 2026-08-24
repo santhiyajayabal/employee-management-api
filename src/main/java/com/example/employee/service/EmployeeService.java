@@ -7,8 +7,10 @@ import com.example.employee.mapper.EmployeeMapper;
 import com.example.employee.exception.EmployeeNotFoundException;
 import com.example.employee.model.Employee;
 import com.example.employee.repository.EmployeeRepository;
+import com.example.employee.specification.EmployeeSpecification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -33,7 +35,32 @@ public class EmployeeService {
                 .map(EmployeeMapper::toResponseDTO);
     }
 
-    public void createEmployeeList(EmployeeRequestDTO employee){
+    public Page<EmployeeResponseDTO> searchEmployees(String name, String department,
+                                                     Double minSalary, Double maxSalary,
+                                                     Pageable pageable) {
+
+        Specification<Employee> spec = (root,
+                                        query,
+                                        criteriaBuilder) -> null;
+
+        if (name != null && !name.isBlank()) {
+            spec = spec.and(EmployeeSpecification.hasName(name));
+        }
+        if (department != null && !department.isBlank()) {
+            spec = spec.and(EmployeeSpecification.hasDepartment(department));
+        }
+        if (minSalary != null) {
+            spec = spec.and(EmployeeSpecification.hasMinSalary(minSalary));
+        }
+        if (maxSalary != null) {
+            spec = spec.and(EmployeeSpecification.hasMaxSalary(maxSalary));
+        }
+
+        return employeeRepository.findAll(spec, pageable)
+                .map(EmployeeMapper::toResponseDTO);
+    }
+
+    public void createEmployee(EmployeeRequestDTO employee){
         employeeRepository.save(EmployeeMapper.toEntity(employee));
     }
 
