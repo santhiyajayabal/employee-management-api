@@ -77,7 +77,7 @@ class EmployeeServiceTest {
         dto.setSalary(50000);
         dto.setDateOfJoining(LocalDate.of(2020, 1, 1));
 
-        employeeService.createEmployeeList(dto);
+        employeeService.createEmployee(dto);
 
         ArgumentCaptor<Employee> captor = ArgumentCaptor.forClass(Employee.class);
         verify(employeeRepository).save(captor.capture());
