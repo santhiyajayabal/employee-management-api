@@ -47,7 +47,7 @@ class EmployeeServiceTest {
         Page<EmployeeResponseDTO> result = employeeService.getEmployeeList(pageable);
 
         assertEquals(1, result.getTotalElements());
-        assertEquals("Alice", result.getContent().get(0).getName());
+        assertEquals("Alice", result.getContent().getFirst().getName());
         verify(employeeRepository).findAll(pageable);
     }
 
@@ -64,7 +64,7 @@ class EmployeeServiceTest {
         Page<EmployeeResponseDTO> result = employeeService.searchEmployeesByName("Bo", pageable);
 
         assertEquals(1, result.getTotalElements());
-        assertEquals("Bob", result.getContent().get(0).getName());
+        assertEquals("Bob", result.getContent().getFirst().getName());
         verify(employeeRepository).searchByName("Bo", pageable);
     }
 
@@ -121,7 +121,7 @@ class EmployeeServiceTest {
         List<EmployeeResponseDTO> result = employeeService.getEmployeeByDept("IT");
 
         assertEquals(1, result.size());
-        assertEquals("Eve", result.get(0).getName());
+        assertEquals("Eve", result.getFirst().getName());
     }
 
     @Test
